@@ -19,36 +19,57 @@ $script:banner = "
 #Author: PapyrusCompendium
 #Description: Help with quick utility functions in Active Directory. Mainly this is for my own use.
 
-$script:foundADUser
+$script:foundADObject
+$script:alternateCreds
 
 function HelpDisplay {
     "   ┌────────────────────────┐"
-    "   │----Search Functions----│"
+    "   │------Search Users------│"
     "   │By Name:               0│"
     "   │By Username:           1│"
     "   │By Employee ID:        2│"
+    "   │----Search Computers----│"
+    "   │By Computer Name       3│"
+    "   │By IP Address          4│"
+    "   │---------Config---------│"
+    "   │Use Alternate Creds    5│"
     "   ├────────────────────────┤"
     "   │< Exit Script          #│"
     "   └────────────────────────┘"
 }
 
-function DisplayData{
-    "  ┌────────────────────────┐"
-    "  │------Display Data------│"
-    "  │Employee ID:           0│"
-    "  │Phones:                1│"
-    "  │Email:                 2│"
-    "  │Full Name:             3│"
-    "  │Account Creation:      4│"
-    "  │Password Details:      5│"
-    "  │Custom Query:          6│"
-    "  │All Data:              *│"
-    "  ├────────────────────────┤"
-    "  │-----Account Configs----│"
-    "  │Change Employee ID:    7│"
-    "  │Change Password        8│"
-    "  ├────────────────────────┤"
-    "  │< Go Back              #│"
+function DisplayUserData{
+    "  ┌────────────────────────┐       ┌───────────────────────Requested Data──────────────────────"
+    "  │------Display Data------│       │"
+    "  │Employee ID:           0│       │"
+    "  │Phones:                1│       │"
+    "  │Email:                 2│       │"
+    "  │Full Name:             3│       │"
+    "  │Account Creation:      4│       │"
+    "  │Password Details:      5│       │"
+    "  │Custom Query:          6│       │"
+    "  │All Data:              *│       │"
+    "  ├────────────────────────┤       │"
+    "  │-----Account Configs----│       │"
+    "  │Change Employee ID:    7│       │"
+    "  │Change Password        8│       │"
+    "  ├────────────────────────┤       │"
+    "  │< Go Back              #│       │"
+    "  └────────────────────────┘"
+}
+
+function DisplayComputerData{
+    "  ┌────────────────────────┐       ┌───────────────────────Requested Data──────────────────────"
+    "  │------Display Data------│       │"
+    "  │IPv4 Address:          0│       │"
+    "  │TeamViewer  ID:        1│       │"
+    "  │                       3│       │"
+    "  │                       4│       │"
+    "  │                       5│       │"
+    "  │                       6│       │"
+    "  │All Data:              *│       │"
+    "  ├────────────────────────┤       │"
+    "  │< Go Back              #│       │"
     "  └────────────────────────┘"
 }
 
@@ -76,12 +97,12 @@ Clear-Host
 }
 
 function SetCursorLocation{param($x, $y)
-    $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates $x, $y
+    $host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates $x, $y
 }
 
-function WriteInSidePanel{param($textData)
-    $lineNumber = 17
-    $width = 35
+function WriteInKeyPairSidePanel{param($textData)
+    $lineNumber = 20
+    $width = 37
 
     if($textData.GetType().Name -like "Object*"){
         $textData | ForEach-Object {
@@ -97,14 +118,14 @@ function WriteInSidePanel{param($textData)
     SetCursorLocation 0 36
 }
 
-function ChnageEmployeeID{
-    $employeeID = Read-Host -Prompt "New Employee ID"
-    Set-ADUser $script:foundADUser -EmployeeID  $employeeID
-}
+function WriteTextInSidePanel{param($textData)
+    $lineNumber = 20
+    $width = 37
 
-function ChangeUserPassword{
-    $newPassword = Read-Host -Prompt "New Password" -AsSecureString
-    Set-ADAccountPassword $script:foundADUser -Reset -NewPassword $newPassword
+    SetCursorLocation $width $lineNumber
+    Write-Host($textData)
+
+    SetCursorLocation 0 36
 }
 
 function SelectADUser { param ($adUsers)
@@ -121,12 +142,43 @@ function SelectADUser { param ($adUsers)
             return
         }
     
-        $script:foundADUser =  $adUsers[$index]
+        $script:foundADObject =  $adUsers[$index]
     } else {
-        $script:foundADUser = $adUsers
+        $script:foundADObject = $adUsers
     }
 
-    DataMenu
+    UserDataMenu
+}
+
+function SelectADComputer { param ($adComputers)
+    ClearBanner
+    if($adComputers.GetType().Name -ne "ADComputer"){
+        for($x = 0; $x -lt $adComputers.Count; $x++){
+            "   $($adComputers[$x].Name)[$($x)]"
+        }
+        "   Go Back[-1]"
+    
+        [int16]$index = Read-Host -Prompt "   Option"
+        if($index -eq -1){
+            return
+        }
+    
+        $script:foundADObject =  $adComputers[$index]
+    } else {
+        $script:foundADObject = $adComputers
+    }
+
+    ComputerDataMenu
+}
+
+function ChangeEmployeeID{
+    $employeeID = Read-Host -Prompt "New Employee ID"
+    Set-ADUser $script:foundADObject -EmployeeID  $employeeID
+}
+
+function ChangeUserPassword{
+    $newPassword = Read-Host -Prompt "New Password" -AsSecureString
+    Set-ADAccountPassword $script:foundADObject -Reset -NewPassword $newPassword
 }
 
 function SearchByName{
@@ -165,6 +217,47 @@ function SearchByEmployeeID{
     }
 }
 
+function SearchByComputerName {
+    ClearBanner
+    $computerName = "*$(Read-Host -Prompt "Computer Name")*".Replace(" ", "*")
+    
+    if(Get-ADComputer -F {Name -like $computerName}){
+        SelectADComputer(Get-ADComputer -F {Name -like $computerName} -Properties *)
+    } else {
+        "Computer not found!"
+        Pause
+    }
+}
+
+function SearchByIP {
+    ClearBanner
+    $deviceIP = Read-Host -Prompt "Computer IP"
+    
+    if(Get-ADComputer -F {IPv4Address -eq $deviceIP} -Properties *){
+        SelectADComputer(Get-ADComputer -F {IPv4Address -eq $deviceIP} -Properties *)
+    } else {
+        "Computer not found!"
+        Pause
+    }
+}
+
+function AlternateCredential {
+    ClearBanner
+    $script:alternateCreds = Get-Credential
+}
+
+function GetTeamViewerID {param($computerName)
+    $wmiObject
+    if(!$script:alternateCreds)
+    {
+        $wmiObject = Get-WmiObject -List StdRegProv -ComputerName $computerName
+    } else {
+        $wmiObject = Get-WmiObject -List StdRegProv -ComputerName $computerName -Credential $script:alternateCreds
+    }
+
+    return $wmiObject.GetDWORDValue(2147483650, "SOFTWARE\WOW6432Node\TeamViewer", "ClientID").uValue
+}
+
 function MainMenu{
     ClearBanner
     HelpDisplay
@@ -175,16 +268,20 @@ function MainMenu{
         "0" {SearchByName}
         "1" {SearchByUsername}
         "2" {SearchByEmployeeID}
+        "3" {SearchByComputerName}
+        "4" {SearchByIP}
+        "5" {AlternateCredential}
         "#" {Exit}
     }
 }
 
-function DataMenu{
+function UserDataMenu
+{
     for(;;){
         ClearBanner
-        "   $($script:foundADUser.Name) - $($script:foundADUser.SamAccountName)"
-        $host.ui.RawUI.WindowTitle = "Active Directory Utilities - $($script:foundADUser.Name)"
-        DisplayData
+        "   $($script:foundADObject.Name) - $($script:foundADObject.SamAccountName)"
+        $host.ui.RawUI.WindowTitle = "Active Directory Utilities - $($script:foundADObject.Name)"
+        DisplayUserData
 
         $optionSelection = Read-Host -Prompt "   Option"
 
@@ -192,19 +289,18 @@ function DataMenu{
         switch($optionSelection)
         {
             "#" {return}
-            "*" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -like "*"})}
-            "0" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -eq "EmployeeID"})}
-            "1" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -like "*phone*"})}
-            "2" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -like "*email*"})}
-            "3" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -eq "Name"})}
-            "4" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {($_.Key -like "*account*") -or $_.Key -like "*created*"})}
-            "5" {WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {$_.Key -like "*password*"})}
+            "*" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*"})}
+            "0" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -eq "EmployeeID"})}
+            "1" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*phone*"})}
+            "2" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*email*"})}
+            "3" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -eq "Name"})}
+            "4" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {($_.Key -like "*account*") -or $_.Key -like "*created*"})}
+            "5" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*password*"})}
             "6" {
-                Write-Host -NoNewline "   Query: "
-                $query = Read-Host
-                WriteInSidePanel($script:foundADUser.GetEnumerator() | ? {($_.Key -like "*$($query)*") -or ($_.Value -like "*$($query)*")})
+                $query = Read-Host -Prompt "Query"
+                WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {($_.Key -like "*$($query)*") -or ($_.Value -like "*$($query)*")})
             }
-            "7" {ChnageEmployeeID}
+            "7" {ChangeEmployeeID}
             "8" {ChangeUserPassword}
         }
         ""
@@ -213,6 +309,32 @@ function DataMenu{
     }
 }
 
+function ComputerDataMenu
+{
+    for(;;){
+        ClearBanner
+        "   $($script:foundADObject.Name) - $($script:foundADObject.IPv4Address)"
+        $host.ui.RawUI.WindowTitle = "Active Directory Utilities - $($script:foundADObject.Name)"
+        DisplayComputerData
+
+        $optionSelection = Read-Host -Prompt "   Option"
+        ""
+        switch($optionSelection)
+        {
+            "#" {return}
+            "*" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*"})}
+            "0" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -eq "IPv4Address"})}
+            "1" {WriteTextInSidePanel("TeamViewer ID: $(GetTeamViewerID($script:foundADObject.Name))")}
+            "6" {
+                $query = Read-Host -Prompt "Query"
+                WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {($_.Key -like "*$($query)*") -or ($_.Value -like "*$($query)*")})
+            }
+        }
+        ""
+
+        Pause
+    }
+}
 
 #Start Script Here
 SetColourTheme
