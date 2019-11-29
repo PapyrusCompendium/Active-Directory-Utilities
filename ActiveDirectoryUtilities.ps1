@@ -28,11 +28,14 @@ function HelpDisplay {
     "   │By Name:               0│"
     "   │By Username:           1│"
     "   │By Employee ID:        2│"
+    "   │                        │"
     "   │----Search Computers----│"
     "   │By Computer Name       3│"
     "   │By IP Address          4│"
+    "   │                        │"
     "   │---------Config---------│"
     "   │Use Alternate Creds    5│"
+    "   │                        │"
     "   ├────────────────────────┤"
     "   │< Exit Script          #│"
     "   └────────────────────────┘"
@@ -49,10 +52,12 @@ function DisplayUserData{
     "  │Password Details:      5│       │"
     "  │Custom Query:          6│       │"
     "  │All Data:              *│       │"
+    "  │                        │       │"
     "  ├────────────────────────┤       │"
     "  │-----Account Configs----│       │"
     "  │Change Employee ID:    7│       │"
     "  │Change Password        8│       │"
+    "  │                        │       │"
     "  ├────────────────────────┤       │"
     "  │< Go Back              #│       │"
     "  └────────────────────────┘"
@@ -62,11 +67,10 @@ function DisplayComputerData{
     "  ┌────────────────────────┐       ┌───────────────────────Requested Data──────────────────────"
     "  │------Display Data------│       │"
     "  │IPv4 Address:          0│       │"
-    "  │TeamViewer  ID:        1│       │"
-    "  │                       3│       │"
-    "  │                       4│       │"
-    "  │                       5│       │"
-    "  │                       6│       │"
+    "  │Team Viewer  ID:       1│       │"
+    "  │Dell Service Tag       2│       │"
+    "  │Installed Software:    3│       │"
+    "  │Custom Query:          4│       │"
     "  │All Data:              *│       │"
     "  ├────────────────────────┤       │"
     "  │< Go Back              #│       │"
@@ -113,6 +117,19 @@ function WriteInKeyPairSidePanel{param($textData)
     } else {
         SetCursorLocation $width $lineNumber
         Write-Host("$($textData.Key) : $($textData.Value)")
+    }
+
+    SetCursorLocation 0 36
+}
+
+function WriteListInSidePanel{param($textData)
+    $lineNumber = 20
+    $width = 37
+
+    $textData | ForEach-Object {
+        SetCursorLocation $width $lineNumber
+        Write-Host($_)
+        $lineNumber++
     }
 
     SetCursorLocation 0 36
@@ -243,7 +260,9 @@ function SearchByIP {
 
 function AlternateCredential {
     ClearBanner
-    $script:alternateCreds = Get-Credential
+    $username = Read-Host -Prompt "Username"
+    $password = Read-Host -Prompt "Password" -AsSecureString
+    $script:alternateCreds = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $username, $password
 }
 
 function GetTeamViewerID {param($computerName)
@@ -256,6 +275,37 @@ function GetTeamViewerID {param($computerName)
     }
 
     return $wmiObject.GetDWORDValue(2147483650, "SOFTWARE\WOW6432Node\TeamViewer", "ClientID").uValue
+}
+
+function GetDellServiceTag {param($computerName)
+    if(!$script:alternateCreds)
+    {
+        return (Get-WmiObject -Class win32_bios -ComputerName $computerName).SerialNumber
+    }
+
+    return (Get-WmiObject -Class win32_bios -ComputerName $computerName -Credential $script:alternateCreds).SerialNumber
+}
+
+function GetInstalledSoftware {param($computerName)
+    $softwareList = @()
+    if(!$script:alternateCreds)
+    {
+        $wmiObject = Get-WmiObject -List StdRegProv -ComputerName $computerName -Credential $adCreds
+    } else {
+        $wmiObject = Get-WmiObject -List StdRegProv -ComputerName $computerName
+    }
+
+    foreach ($item in $wmiObject.EnumKey(2147483650, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall").sNames |
+    ? {($wmiObject.GetDWORDValue(2147483650, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($_)", "SystemComponent").uValue -ne 1)}) {
+        $softwareList += $wmiObject.GetStringValue(2147483650, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($item)", "DisplayName").sValue
+    }
+
+    foreach ($item in $wmiObject.EnumKey(2147483650, "SOFTWARE\Wow6432node\Microsoft\Windows\CurrentVersion\Uninstall").sNames |
+    ? {($wmiObject.GetDWORDValue(2147483650, "SOFTWARE\Wow6432node\Microsoft\Windows\CurrentVersion\Uninstall\$($_)", "SystemComponent").uValue -ne 1)}) {
+        $softwareList += $wmiObject.GetStringValue(2147483650, "SOFTWARE\Wow6432node\Microsoft\Windows\CurrentVersion\Uninstall\$($item)", "DisplayName").sValue
+    }
+
+    return $softwareList | Where-Object {$_ -notlike "*Update for*"} | Sort-Object
 }
 
 function MainMenu{
@@ -325,7 +375,9 @@ function ComputerDataMenu
             "*" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -like "*"})}
             "0" {WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {$_.Key -eq "IPv4Address"})}
             "1" {WriteTextInSidePanel("TeamViewer ID: $(GetTeamViewerID($script:foundADObject.Name))")}
-            "6" {
+            "2" {WriteTextInSidePanel("Dell Service Tag: $(GetDellServiceTag($script:foundADObject.Name))")}
+            "3" {WriteListInSidePanel($(GetInstalledSoftware($script:foundADObject.Name)))}
+            "4" {
                 $query = Read-Host -Prompt "Query"
                 WriteInKeyPairSidePanel($script:foundADObject.GetEnumerator() | Where-Object {($_.Key -like "*$($query)*") -or ($_.Value -like "*$($query)*")})
             }
